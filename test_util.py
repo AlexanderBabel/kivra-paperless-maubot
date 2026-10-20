@@ -4,7 +4,7 @@ import json
 import sys
 
 sys.path.insert(0, "kivra_paperless")
-from util import doc_filename, html_to_text, jwt_claims, pkce_challenge, retry_after  # noqa: E402
+from util import doc_filename, html_to_text, jwt_claims, map_name, pkce_challenge, retry_after  # noqa: E402
 
 # S256 = unpadded base64url of a 32-byte digest
 c = pkce_challenge("verifier")
@@ -24,4 +24,9 @@ assert retry_after("7", 5) == 7
 assert retry_after(None, 40) == 40
 assert retry_after("Wed, 21 Oct 2026 07:28:00 GMT", 10) == 10
 assert retry_after("9999", 5) == 120 and retry_after("0", 5) == 1
+ica = [{"match": "^(Maxi )?ICA (?!Banken)", "name": "ICA"}]
+assert map_name("ICA Nära Kåbo", ica) == "ICA"
+assert map_name("Maxi ICA Stormarknad Stenhagen Uppsala", ica) == "ICA"
+assert map_name("ICA Banken", ica) == "ICA Banken"
+assert map_name("Coop Konsum", ica) == "Coop Konsum" and map_name("x", None) == "x"
 print("ok")

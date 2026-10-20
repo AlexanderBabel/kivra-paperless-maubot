@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 from aiohttp import ClientSession, FormData
@@ -56,6 +57,27 @@ class Paperless:
         # Upgrade path: store keys in a custom field and fetch them all in one query.
         return (await self._get("documents/", original_filename__icontains=kivra_key,
                                 page_size=1))["count"] > 0
+
+    async def has_checksum(self, data: bytes) -> bool:
+        """Same bytes already in Paperless, under whatever name (Paperless stores the MD5)."""
+        md5 = hashlib.md5(data).hexdigest()
+        return (await self._get("documents/", checksum__iexact=md5, page_size=1))["count"] > 0
+
+    async def pending_filenames(self) -> list[str]:
+        """Filenames of uploads Paperless hasn't finished consuming yet.
+
+        Those aren't documents yet, so has()/has_checksum() can't see them; without
+        this, a second sync during a long OCR backlog uploads everything again.
+        """
+        async with self.http.get(f"{self.api}/tasks/", headers=self.headers,
+                                 params={"is_complete": "false", "page_size": 1000}) as r:
+            if r.status != 200:
+                raise PaperlessError(f"GET tasks/: HTTP {r.status}")
+            data = await r.json()
+        tasks = data["results"] if isinstance(data, dict) else data
+        # API v10 keeps the filename in input_data, v9 in task_file_name.
+        return [(t.get("input_data") or {}).get("filename") or t.get("task_file_name") or ""
+                for t in tasks]
 
     async def upload(self, filename: str, data: bytes, mime: str, *, title: str,
                      created: str, correspondent: int | None, document_type: int | None,

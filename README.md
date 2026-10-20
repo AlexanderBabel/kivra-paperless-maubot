@@ -22,14 +22,16 @@ bot:  🎉 Kivra sync done: 31 new, 89 already in Paperless, 0 failed (of 120).
 2. The bot posts a link to a small page served by the plugin itself. It shows
    BankID's animated QR code, refreshed every second. A static image in the chat
    doesn't work for this, because BankID rejects a QR frame within seconds.
-3. Once you're logged in, the bot lists every letter and receipt in your inbox.
-   It skips the ones Paperless already has (it searches `original_filename` for the Kivra
-   key) and uploads the rest:
-   - PDF parts are uploaded as they are.
+3. Once you're logged in, the bot lists every letter and receipt in your inbox
+   and uploads the ones Paperless doesn't have yet (see [Duplicates](#duplicates)):
+   - PDF parts are uploaded as they are. When a letter has a PDF, its text part
+     is skipped: that's Kivra's cover note ("Du har fått ett meddelande från …").
    - Plain-text parts are uploaded as `.txt`.
    - HTML parts are converted to `.txt`. Without Tika, Paperless can't ingest
      HTML.
-   - The sender becomes the correspondent and the subject becomes the title.
+   - The sender becomes the correspondent, after the renaming rules in
+     `correspondents` (by default all ICA stores become one "ICA"). The subject
+     becomes the title.
      The received date is used as the created date.
    - Receipts (kvitton) are uploaded as the PDF Kivra renders for them. The
      store becomes the correspondent, the title is `Kvitto <store> <amount>`, and
@@ -39,6 +41,19 @@ bot:  🎉 Kivra sync done: 31 new, 89 already in Paperless, 0 failed (of 120).
 4. A single status message is edited as the sync runs (at most once every 5 s).
 
 Each sync is a fresh BankID login. No Kivra token is stored.
+
+### Duplicates
+
+Running a sync again is safe. An item is skipped when any of these is true:
+
+- A document's original filename contains its Kivra key.
+- An upload with its key is still waiting in Paperless's task queue. This
+  covers re-running while Paperless is still OCRing the previous batch.
+- A file with the same MD5 checksum is already in Paperless.
+
+The bot's Paperless user has to be able to see the documents it uploaded. If
+you give them to another owner, give the bot view permission, or it will
+upload them again.
 
 ## Commands
 
@@ -61,11 +76,14 @@ allowed_users: ["@you:example.com"]
 paperless:
   url: https://paperless.example.com
   token: <Paperless API token>
-  tags: [kivra]
+  tags: []                    # applied to every upload
   document_type: ""           # for letters
   receipt_document_type: ""   # for receipts
-  source_field: Source         # custom field; empty = off
-  source: Kivra                # value, or option label for a select field
+  source_field: Source        # custom field; empty = off
+  source: Kivra               # value, or option label for a select field
+  correspondents:             # first regex matching the sender's start renames it
+    - match: "^(Maxi )?ICA (?!Banken)"
+      name: ICA
 login_timeout: 180
 ```
 
@@ -89,6 +107,9 @@ Other requirements:
   works.
 - If a letter's upload fails partway through, its other parts are not retried
   on later syncs, because dedupe works per letter.
+- Some store names arrive from Kivra already garbled (e.g. `ICA N�ra K�bo`).
+  The bot can't repair them. A `correspondents` rule can map them to a clean
+  name.
 
 ## Development
 
