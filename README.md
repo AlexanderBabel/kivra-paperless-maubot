@@ -1,5 +1,9 @@
 # kivra-paperless-maubot
 
+[![release](https://img.shields.io/github/v/release/AlexanderBabel/kivra-paperless-maubot)](https://github.com/AlexanderBabel/kivra-paperless-maubot/releases/latest)
+[![build](https://github.com/AlexanderBabel/kivra-paperless-maubot/actions/workflows/release.yml/badge.svg)](https://github.com/AlexanderBabel/kivra-paperless-maubot/actions/workflows/release.yml)
+[![license](https://img.shields.io/github/license/AlexanderBabel/kivra-paperless-maubot)](LICENSE)
+
 A [maubot](https://github.com/maubot/maubot) plugin that imports your
 [Kivra](https://kivra.com) letters and receipts into [Paperless-ngx](https://docs.paperless-ngx.com),
 started from a Matrix chat and logged in with BankID.
@@ -76,9 +80,7 @@ Other requirements:
 ## Limitations
 
 - Kivra has no public API. This plugin uses the endpoints of Kivra's own web
-  inbox, as reverse engineered by
-  [felixandersen/kivra-sync](https://github.com/felixandersen/kivra-sync), and
-  will break when Kivra changes them.
+  inbox, as reverse engineered by [kivra-sync](#credits), and will break when Kivra changes them.
 - The first sync uploads every receipt you have, which can be thousands of
   card purchases. Paperless OCRs each one.
 - Only one sync runs at a time per bot instance.
@@ -113,7 +115,22 @@ The [release workflow](.github/workflows/release.yml) checks that the tag
 matches `maubot.yaml`, builds the plugin, and publishes a GitHub release with
 the `.mbp` attached.
 
+## Credits
+
+- [felixandersen/kivra-sync](https://github.com/felixandersen/kivra-sync)
+  worked out Kivra's BankID OAuth flow, the GraphQL queries and the download
+  endpoints, and pioneered the Paperless-ngx import. This plugin's Kivra client
+  is an async port of that work. kivra-sync itself started from
+  [stefangorling/fetch-kivra](https://github.com/stefangorling/fetch-kivra).
+  Thank you both!
+- [maubot](https://github.com/maubot/maubot) by tulir provides the bot
+  framework and the plugin web server.
+- [qrcodejs](https://github.com/davidshimjs/qrcodejs) draws the QR code on the
+  login page.
+
 ## License
 
-MIT. The Kivra API handling is derived from kivra-sync (MIT).
-This project is not affiliated with Kivra, BankID or Paperless-ngx.
+MIT, see [LICENSE](LICENSE). It includes the kivra-sync copyright notice
+because the Kivra client is derived from that project.
+
+Not affiliated with or endorsed by Kivra, BankID, or Paperless-ngx.

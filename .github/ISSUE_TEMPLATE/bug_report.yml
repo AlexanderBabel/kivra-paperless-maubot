@@ -1,0 +1,40 @@
+name: Bug report
+description: Something broke during login or sync
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never paste tokens, personnummer, or document contents.** Redact maubot logs before posting.
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      placeholder: v0.1.1
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: maubot and Paperless-ngx versions
+      placeholder: maubot 0.6.0, Paperless-ngx 3.3.3
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where did it fail?
+      options:
+        - BankID login / QR page
+        - Listing letters or receipts
+        - Downloading from Kivra
+        - Uploading to Paperless
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The bot's final status message and the relevant (redacted) maubot log lines.
+      render: text
+    validations:
+      required: true
