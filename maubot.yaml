@@ -1,6 +1,6 @@
 maubot: 0.6.0
 id: com.alexbabel.kivrapaperless
-version: 0.1.1
+version: 0.2.0
 license: MIT
 modules:
   - kivra_paperless

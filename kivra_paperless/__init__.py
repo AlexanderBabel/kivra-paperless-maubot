@@ -1,6 +1,7 @@
 import asyncio
 import secrets
 import time
+from dataclasses import dataclass
 
 from aiohttp import ClientSession, ClientTimeout
 from aiohttp.web import Request, Response, json_response
@@ -12,7 +13,7 @@ from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 
 from .kivra import UA, Kivra, KivraError, Login
 from .paperless import Paperless
-from .util import doc_filename, html_to_text
+from .util import doc_filename, html_to_text, map_name
 
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -58,8 +59,29 @@ class Config(BaseProxyConfig):
         for key in ("allowed_users", "paperless.url", "paperless.token", "paperless.tags",
                     "paperless.document_type",
                     "paperless.receipt_document_type", "paperless.source_field",
-                    "paperless.source", "login_timeout"):
+                    "paperless.source", "paperless.correspondents", "login_timeout"):
             helper.copy(key)
+
+
+@dataclass
+class Run:
+    """What every upload in one sync shares."""
+    p: Paperless
+    kivra: Kivra
+    tags: list[int]
+    source: dict | None
+    rules: list[dict]
+
+    async def put(self, filename: str, data: bytes, mime: str, *, title: str, created: str,
+                  sender: str, doc_type: int | None) -> bool:
+        """Upload unless Paperless already has these exact bytes. True if uploaded."""
+        if await self.p.has_checksum(data):
+            return False
+        correspondent = await self.p.id_for("correspondents", map_name(sender, self.rules))
+        await self.p.upload(filename, data, mime, title=title, created=created,
+                            correspondent=correspondent, document_type=doc_type,
+                            tags=self.tags, custom_fields=self.source)
+        return True
 
 
 class Sync:
@@ -192,68 +214,77 @@ class KivraPaperlessBot(Plugin):
         letter_type = await doc_type("paperless.document_type")
         receipt_type = await doc_type("paperless.receipt_document_type")
 
+        run = Run(p, kivra, tags, source, cfg["paperless.correspondents"] or [])
+        pending = await p.pending_filenames()
+
         await self._status(s, "✅ Logged in. Listing letters and receipts…", force=True)
         letters, receipts = await kivra.letters(), await kivra.receipts()
         items = [(self._import_letter, x, letter_type) for x in letters] + \
                 [(self._import_receipt, x, receipt_type) for x in receipts]
         new = skipped = failed = 0
+        seen: set[str] = set()
         for i, (importer, item, dtype) in enumerate(items, 1):
             await self._status(s, f"📬 {i}/{len(items)} ({len(letters)} letters, {len(receipts)} "
                                   f"receipts) · {new} new · {skipped} already in Paperless · "
                                   f"{failed} failed")
+            key = item["key"]
             try:
-                if await p.has(item["key"]):
+                if (key in seen or any(key in f for f in pending) or await p.has(key)):
                     skipped += 1
-                else:
-                    await importer(p, kivra, item, tags, dtype, source)
+                    continue
+                seen.add(key)
+                if await importer(run, item, dtype):
                     new += 1
+                else:
+                    skipped += 1  # every file was already in Paperless by checksum
             except Exception as e:
                 failed += 1
-                self.log.warning(f"Kivra item {item['key']} failed: {e}")
+                self.log.warning(f"Kivra item {key} failed: {e}")
         icon = "⚠️" if failed else "🎉"
         await self._status(s, f"{icon} Kivra sync done: {new} new, {skipped} already in "
                               f"Paperless, {failed} failed (of {len(letters)} letters, "
                               f"{len(receipts)} receipts).", force=True)
 
-    async def _import_receipt(self, p: Paperless, kivra: Kivra, receipt: dict,
-                              tags: list[int], doc_type: int | None,
-                              source: dict | None) -> None:
+    @staticmethod
+    async def _import_receipt(run: Run, receipt: dict, doc_type: int | None) -> int:
         key = receipt["key"]
         date = (receipt.get("purchaseDate") or "")[:10]
         store = (receipt.get("store") or {}).get("name") or "Kivra"
         amount = (receipt.get("totalAmount") or {}).get("formatted")
-        await p.upload(doc_filename(date, store, key, None, "pdf"), await kivra.receipt_pdf(key),
-                       "application/pdf", title=f"Kvitto {store}" + (f" {amount}" if amount else ""),
-                       created=date, correspondent=await p.id_for("correspondents", store),
-                       document_type=doc_type, tags=tags, custom_fields=source)
+        title = f"Kvitto {store}" + (f" {amount}" if amount else "")
+        return await run.put(doc_filename(date, store, key, None, "pdf"),
+                             await run.kivra.receipt_pdf(key), "application/pdf", title=title,
+                             created=date, sender=store, doc_type=doc_type)
 
-    async def _import_letter(self, p: Paperless, kivra: Kivra, letter: dict,
-                             tags: list[int], doc_type: int | None,
-                             source: dict | None) -> None:
+    @staticmethod
+    async def _import_letter(run: Run, letter: dict, doc_type: int | None) -> int:
         key = letter["key"]
         date = (letter.get("receivedAt") or "")[:10]
         sender = (letter.get("sender") or {}).get("name") or "Kivra"
         subject = letter.get("subject") or sender
-        parts = (await kivra.content(key)).get("parts") or []
-        correspondent = await p.id_for("correspondents", sender)
-        multi = len(parts) > 1
-        uploaded = 0
-        for n, part in enumerate(parts):
+        parts = (await run.kivra.content(key)).get("parts") or []
+        types = [part.get("content_type") for part in parts]
+        if "application/pdf" in types:
+            # The text part next to a PDF is Kivra's cover note ("Du har fått ett
+            # meddelande från …"); the PDF is the letter.
+            parts = [part for part in parts if part.get("content_type") == "application/pdf"]
+        files = []
+        for part in parts:
             ctype = part.get("content_type")
             if ctype == "application/pdf":
-                data, ext, mime = await kivra.file(key, part["key"]), "pdf", ctype
+                files.append((await run.kivra.file(key, part["key"]), "pdf", ctype))
             elif ctype == "text/plain":
-                data, ext, mime = (part.get("body") or "").encode(), "txt", ctype
+                files.append(((part.get("body") or "").encode(), "txt", ctype))
             elif ctype == "text/html":
-                data, ext, mime = html_to_text(part.get("body") or "").encode(), "txt", "text/plain"
-            else:
-                continue
-            if not data.strip():
-                continue
-            title = f"{subject} ({n + 1}/{len(parts)})" if multi else subject
-            await p.upload(doc_filename(date, sender, key, n if multi else None, ext), data, mime,
-                           title=title, created=date, correspondent=correspondent,
-                           document_type=doc_type, tags=tags, custom_fields=source)
-            uploaded += 1
-        if not uploaded:
-            raise KivraError(f"no uploadable parts ({[x.get('content_type') for x in parts]})")
+                files.append((html_to_text(part.get("body") or "").encode(), "txt", "text/plain"))
+        files = [f for f in files if f[0].strip()]
+        if not files:
+            raise KivraError(f"no uploadable parts ({types})")
+        multi = len(files) > 1
+        uploaded = 0
+        for n, (data, ext, mime) in enumerate(files):
+            title = f"{subject} ({n + 1}/{len(files)})" if multi else subject
+            uploaded += await run.put(doc_filename(date, sender, key, n if multi else None, ext),
+                                      data, mime, title=title, created=date, sender=sender,
+                                      doc_type=doc_type)
+        return uploaded

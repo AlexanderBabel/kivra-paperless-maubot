@@ -6,9 +6,9 @@ paperless:
   # Base URL without /api, e.g. http://paperless.paperless.svc.cluster.local
   url: ""
   token: ""
-  # Tags applied to every uploaded document (created if missing).
-  tags:
-    - kivra
+  # Tags applied to every uploaded document (created if missing). Prefer the
+  # source custom field below for marking where documents came from.
+  tags: []
   # Document types for letters and receipts (created if missing). Empty = none.
   document_type: ""
   receipt_document_type: ""
@@ -17,6 +17,12 @@ paperless:
   # option label. Empty source_field = off.
   source_field: Source
   source: Kivra
+  # Rename senders before they become correspondents: the first rule whose
+  # regex `match` matches the start of the sender name wins. Default folds the
+  # one-correspondent-per-store ICA receipts into a single "ICA".
+  correspondents:
+    - match: "^(Maxi )?ICA (?!Banken)"
+      name: ICA
 
 # Seconds to wait for the BankID login before giving up.
 login_timeout: 180

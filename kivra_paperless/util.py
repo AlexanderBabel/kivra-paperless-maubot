@@ -66,3 +66,11 @@ def retry_after(header: str | None, default: float, cap: float = 120) -> float:
         return min(max(float(header), 1), cap)
     except (TypeError, ValueError):
         return min(default, cap)
+
+
+def map_name(name: str, rules: list[dict] | None) -> str:
+    """First rule whose `match` regex matches the start of `name` renames it to `name`."""
+    for rule in rules or []:
+        if re.match(rule["match"], name):
+            return rule["name"]
+    return name
