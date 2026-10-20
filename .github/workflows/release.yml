@@ -27,7 +27,7 @@ jobs:
           version=$(sed -n 's/^version: //p' maubot.yaml)
           [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME != maubot.yaml v$version"; exit 1; }
       - run: mbc build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: plugin
           path: "*.mbp"
