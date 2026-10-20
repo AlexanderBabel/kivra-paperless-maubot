@@ -1,0 +1,38 @@
+name: release
+
+# Push a tag matching the version in maubot.yaml (e.g. v0.1.1) to publish a
+# GitHub release with the built .mbp attached. Every push and PR builds too.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install maubot==0.6.0
+      - run: python test_util.py
+      - name: Check tag matches maubot.yaml version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version=$(sed -n 's/^version: //p' maubot.yaml)
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME != maubot.yaml v$version"; exit 1; }
+      - run: mbc build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin
+          path: "*.mbp"
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" *.mbp --generate-notes --verify-tag

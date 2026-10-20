@@ -1,0 +1,22 @@
+# Matrix users allowed to run a sync. Empty = nobody.
+allowed_users: []
+#  - "@you:example.com"
+
+paperless:
+  # Base URL without /api, e.g. http://paperless.paperless.svc.cluster.local
+  url: ""
+  token: ""
+  # Tags applied to every uploaded document (created if missing).
+  tags:
+    - kivra
+  # Document types for letters and receipts (created if missing). Empty = none.
+  document_type: ""
+  receipt_document_type: ""
+  # Custom field marking where a document came from. Not created by the bot;
+  # skipped if Paperless has no such field. For a select field, `source` is an
+  # option label. Empty source_field = off.
+  source_field: Source
+  source: Kivra
+
+# Seconds to wait for the BankID login before giving up.
+login_timeout: 180

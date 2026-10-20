@@ -1,0 +1,12 @@
+maubot: 0.6.0
+id: com.alexbabel.kivrapaperless
+version: 0.1.1
+license: MIT
+modules:
+  - kivra_paperless
+main_class: KivraPaperlessBot
+config: true
+extra_files:
+  - base-config.yaml
+webapp: true
+database: false
